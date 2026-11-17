@@ -98,6 +98,13 @@
   @keyframes livesPop{0%{transform:scale(1)}40%{transform:scale(1.25)}100%{transform:scale(1)}}
   #gLives.pop{display:inline-block;animation:livesPop .4s ease-out .9s}
   .gHelp{color:#666;font-size:13px;margin-top:8px;line-height:1.4}
+  /* ===== Ouvir a partitura / tom ===== */
+  #listenBar{background:#f8f6f0;padding-top:8px;padding-bottom:8px}
+  #listenBar input[type=number]{width:66px;font-size:14px;padding:6px 8px;border-radius:6px;border:1px solid #bbb}
+  #listenBar .sep{width:1px;align-self:stretch;background:#ddd;margin:0 4px}
+  #listenBar small{color:#777;font-size:12px}
+  .msel{position:absolute;background:rgba(43,108,176,.10);border:1.5px solid rgba(43,108,176,.45);border-radius:6px;pointer-events:none;z-index:3}
+  body.upload #score{cursor:pointer;user-select:none;-webkit-user-select:none}
   #gHead{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin:4px 0 14px}
   #gHead h2{margin:0;font-size:24px}
   #gHead p{margin:2px 0 0;color:#666;font-size:14px}
@@ -150,9 +157,6 @@
   <label class="only-upload">Hinos prontos
     <select id="hymnSel"><option value="">— escolher hino —</option><option value="doxologia">Doxologia (fácil)</option><option value="santo">Santo, Santo, Santo (médio)</option><option value="castelo">Castelo Forte (mais difícil)</option></select>
   </label>
-  <label class="only-upload" id="hymnKeyWrap" style="display:none">Tom
-    <select id="hymnKey"></select>
-  </label>
   <label class="only-upload">Partitura (.mxl / .xml)
     <input type="file" id="file" accept=".mxl,.xml,.musicxml">
   </label>
@@ -182,6 +186,19 @@
   <label class="only-game chk only-train"><input type="checkbox" id="gHold" checked> Contar duração</label>
   <button id="gPlay" class="only-game primary">▶ Jogar</button>
   <button id="gPause" class="only-game only-train">⏸ Pausar</button>
+</div>
+
+<div class="bar only-upload" id="listenBar">
+  <label>Tom <select id="keySel"></select></label>
+  <label>Oitava <select id="octSel"><option value="-1">uma abaixo</option><option value="0" selected>normal</option><option value="1">uma acima</option></select></label>
+  <span class="sep"></span>
+  <button id="lPlay" class="primary">▶ Ouvir</button>
+  <label>Do compasso <input type="number" id="lFrom" min="0"></label>
+  <label>até o <input type="number" id="lTo" min="0"></label>
+  <button id="lAll">Partitura toda</button>
+  <label>Velocidade <select id="lBpm"></select></label>
+  <label class="chk"><input type="checkbox" id="lHand"> só a mão escolhida</label>
+  <small>Clique num compasso para começar dali · Shift+clique marca o fim</small>
 </div>
 
 <div id="micDbg" style="display:none;font:12px monospace;background:#fff8d6;padding:6px 20px;word-break:break-word"></div>
@@ -401,10 +418,10 @@ function updateSoundState() {
   }
 }
 
-function synthNote(p, vel) {
+function synthNote(p, vel, at) {
   const f = 440 * Math.pow(2, (p - 69) / 12);
   const g = actx.createGain();
-  const t = actx.currentTime;
+  const t = at || actx.currentTime;
   g.gain.setValueAtTime(0, t);
   g.gain.linearRampToValueAtTime(0.4 * vel, t + 0.005);
   g.gain.exponentialRampToValueAtTime(0.001, t + 3);
@@ -676,12 +693,14 @@ function micEmitOff(ts) {
 
 /* ===== Utilidades ===== */
 const NAMES = ['Dó','Dó#','Ré','Ré#','Mi','Fá','Fá#','Sol','Sol#','Lá','Lá#','Si'];
-const noteName = m => NAMES[m % 12] + (Math.floor(m / 12) - 1);
+const NAMES_B = ['Dó','Ré♭','Ré','Mi♭','Mi','Fá','Sol♭','Sol','Lá♭','Lá','Si♭','Si'];
+let useFlats = false;   // partitura em tom com bemóis: nomes com bemol (Mi♭ em vez de Ré#)
+const noteName = m => (useFlats ? NAMES_B : NAMES)[m % 12] + (Math.floor(m / 12) - 1);
 const $ = id => document.getElementById(id);
 
 let osmd = null;
 let mode = 'home';
-let uploadXml = null;
+let uploadXml = null;   // MusicXML que está na tela (já no tom escolhido)
 let loaded = false;
 let finished = false;
 let expected = new Set();   // notas MIDI esperadas no passo atual
@@ -779,6 +798,7 @@ function setFeedback(text, cls) {
 /* ===== MIDI ===== */
 function onNoteOn(p, ts) {
   if (mode === 'game') { gameNote(p, ts); return; }
+  if (LST.state === 'play' || performance.now() < LST.quietUntil) { if (!micOn()) setFeedback(noteName(p), ''); return; }   // ouvindo: não conta
   if (timingActive()) { onTimedNote(p, ts); return; }
   if (!loaded || finished) { setFeedback(noteName(p), ''); return; }
   if (expected.has(p)) {
@@ -1748,6 +1768,8 @@ window.addEventListener('resize', () => {
 function showScreen(m) {
   mode = m;
   stopTimed(true);
+  listenStop(true);
+  useFlats = false;
   if (typeof stopGame === 'function') stopGame(true);
   const mic = document.body.classList.contains('mic');
   document.body.className = (m === 'home') ? '' : m;
@@ -1758,10 +1780,293 @@ function showScreen(m) {
   if (m === 'home') loaded = false;
 }
 
-function openUpload(xml) {
-  uploadXml = xml;
-  loadScore(xml);
+/* ===== Subir partitura: fonte atual (arquivo, exemplo ou hino) + tom/oitava ===== */
+let SRC = null;   // { kind: 'file' | 'hymn', xml (original), hymn }
+function setSrc(src) {
+  SRC = src;
+  fillSrcKeys();
+  $('octSel').value = '0';
+  if (src.kind !== 'hymn') $('hymnSel').value = '';
+  loadSrc(true);
 }
+function loadSrc(fresh) {
+  if (!SRC) return;
+  const k = $('keySel').value, o = +$('octSel').value;
+  const xml = SRC.kind === 'hymn' ? transposeXml(hymnXml(SRC.hymn, k), null, o) : SRC.kind === 'raw' ? SRC.xml : transposeXml(SRC.xml, k === '' ? null : +k, o);
+  openUpload(xml, fresh);
+}
+async function openUpload(xml, fresh) {
+  listenStop(true);
+  uploadXml = xml;
+  useFlats = SRC && SRC.kind !== 'raw' && xmlKey(xml).f < 0;
+  await loadScore(xml);
+  if (loaded) initListen(fresh);
+}
+function fillSrcKeys() {
+  const sel = $('keySel');
+  if (SRC.kind === 'hymn') { fillKeys(sel, SRC.hymn); return; }
+  if (SRC.kind === 'raw') { sel.innerHTML = '<option value="">Original (não deu para mudar o tom deste arquivo)</option>'; return; }
+  const k = xmlKey(SRC.xml);
+  sel.innerHTML = '';
+  const add = (v, txt) => { const o = document.createElement('option'); o.value = v; o.textContent = txt; sel.appendChild(o); };
+  add('', 'Original (' + keyName(k.f, k.minor) + ')');
+  for (let f = -6; f <= 6; f++) {
+    if (f === k.f) continue;
+    const iv = keyInterval(k.f, f, 0);
+    add(String(f), keyName(f, k.minor) + ' (' + (iv.sm > 0 ? '+' : '') + iv.sm + ')');
+  }
+}
+
+/* ----- Transposição de MusicXML ----- */
+const MAJ_NAME = { '-7': 'Dó♭', '-6': 'Sol♭', '-5': 'Ré♭', '-4': 'Lá♭', '-3': 'Mi♭', '-2': 'Si♭', '-1': 'Fá', 0: 'Dó', 1: 'Sol', 2: 'Ré', 3: 'Lá', 4: 'Mi', 5: 'Si', 6: 'Fá♯', 7: 'Dó♯' };
+const MIN_NAME = { '-7': 'Lá♭', '-6': 'Mi♭', '-5': 'Si♭', '-4': 'Fá', '-3': 'Dó', '-2': 'Sol', '-1': 'Ré', 0: 'Lá', 1: 'Mi', 2: 'Si', 3: 'Fá♯', 4: 'Dó♯', 5: 'Sol♯', 6: 'Ré♯', 7: 'Lá♯' };
+const keyName = (f, minor) => minor ? MIN_NAME[f] + ' menor' : MAJ_NAME[f] + ' maior';
+function xmlKey(xml) {
+  const d = new DOMParser().parseFromString(xml, 'application/xml'), k = d.querySelector('key');
+  const f = k && k.querySelector('fifths') ? parseInt(k.querySelector('fifths').textContent, 10) || 0 : 0;
+  const m = k && k.querySelector('mode');
+  return { f: Math.max(-7, Math.min(7, f)), minor: !!m && m.textContent.trim() === 'minor' };
+}
+// intervalo de uma armadura para outra: { ls: graus, sm: semitons }, pelo caminho mais curto (+ oitavas)
+function keyInterval(of, tf, oct) {
+  const md = (a, n) => ((a % n) + n) % n;
+  const opc = md(7 * of, 12), tpc = md(7 * tf, 12), ol = md(4 * of, 7), tl = md(4 * tf, 7);
+  let sm = md(tpc - opc, 12); if (sm > 6 || (sm === 6 && tf < of)) sm -= 12;
+  const dl = md(tl - ol, 7);
+  const ls = [dl, dl - 7].reduce((a, c) => Math.abs(c * 12 / 7 - sm) < Math.abs(a * 12 / 7 - sm) ? c : a);
+  return { ls: ls + 7 * oct, sm: sm + 12 * oct };
+}
+// tf = armadura nova (null = mantém); oct = oitavas para cima/baixo
+function transposeXml(xml, tf, oct) {
+  oct = oct || 0;
+  if (tf === null && !oct) return xml;
+  const doc = new DOMParser().parseFromString(xml, 'application/xml');
+  if (doc.querySelector('parsererror')) return xml;
+  const of = xmlKey(xml).f;
+  if (tf === null) tf = of;
+  const iv = keyInterval(of, tf, oct);
+  if (!iv.ls && !iv.sm) return xml;
+  const STEPS = 'CDEFGAB';
+  doc.querySelectorAll('pitch').forEach(p => {
+    const stEl = p.querySelector('step'), ocEl = p.querySelector('octave'), al = p.querySelector('alter');
+    if (!stEl || !ocEl) return;
+    const [na, nal] = trNote(+ocEl.textContent * 7 + STEPS.indexOf(stEl.textContent.trim()), al ? Math.round(+al.textContent) : 0, iv);
+    stEl.textContent = STEPS[na % 7]; ocEl.textContent = Math.floor(na / 7);
+    if (nal) { const a = al || doc.createElement('alter'); a.textContent = nal; if (!al) p.insertBefore(a, ocEl); }
+    else if (al) al.remove();
+  });
+  // cifras (Harmony): fundamental e baixo
+  [['root-step', 'root-alter'], ['bass-step', 'bass-alter']].forEach(([sn, an]) => doc.querySelectorAll(sn).forEach(stEl => {
+    const par = stEl.parentNode, al = par.querySelector(an);
+    const [na, nal] = trNote(28 + STEPS.indexOf(stEl.textContent.trim()), al ? Math.round(+al.textContent) : 0, iv);
+    stEl.textContent = STEPS[na % 7];
+    if (nal) { const a = al || doc.createElement(an); a.textContent = nal; if (!al) stEl.after(a); }
+    else if (al) al.remove();
+  }));
+  doc.querySelectorAll('note > accidental').forEach(a => a.remove());   // o desenho recalcula os acidentes
+  if (tf !== of) {
+    doc.querySelectorAll('key > fifths').forEach(f => {
+      let n = (parseInt(f.textContent, 10) || 0) + tf - of;
+      if (n > 7) n -= 12; if (n < -7) n += 12;
+      f.textContent = n;
+    });
+    const t = doc.querySelector('work-title') || doc.querySelector('movement-title');
+    const minor = xmlKey(xml).minor;
+    if (t) t.textContent = t.textContent.replace(/ \(em [^)]*\)$/, '') + ' (em ' + keyName(tf, minor) + ')';
+  }
+  return new XMLSerializer().serializeToString(doc);
+}
+
+/* ----- Abrir .mxl (zip) no navegador: devolve o MusicXML em texto ----- */
+async function unzipMxl(u8) {
+  const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  let eocd = -1;
+  for (let i = u8.length - 22; i >= Math.max(0, u8.length - 65557); i--) if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  if (eocd < 0) throw new Error('arquivo .mxl inválido');
+  const n = dv.getUint16(eocd + 10, true); let off = dv.getUint32(eocd + 16, true);
+  const files = {}, dec = new TextDecoder('utf-8');
+  for (let i = 0; i < n; i++) {
+    const method = dv.getUint16(off + 10, true), csize = dv.getUint32(off + 20, true);
+    const nl = dv.getUint16(off + 28, true), el = dv.getUint16(off + 30, true), cl = dv.getUint16(off + 32, true), lho = dv.getUint32(off + 42, true);
+    files[dec.decode(u8.subarray(off + 46, off + 46 + nl))] = { method, csize, lho };
+    off += 46 + nl + el + cl;
+  }
+  async function read(name) {
+    const f = files[name]; if (!f) return null;
+    const start = f.lho + 30 + dv.getUint16(f.lho + 26, true) + dv.getUint16(f.lho + 28, true);
+    const data = u8.subarray(start, start + f.csize);
+    if (f.method === 0) return dec.decode(data);
+    const ds = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    return dec.decode(await new Response(ds).arrayBuffer());
+  }
+  let root = null;
+  const cont = await read('META-INF/container.xml');
+  if (cont) { const m = cont.match(/full-path="([^"]+)"/); if (m) root = m[1]; }
+  if (!root) root = Object.keys(files).find(k => !k.startsWith('META-INF') && /\.(xml|musicxml)$/i.test(k));
+  const xml = root && await read(root);
+  if (!xml) throw new Error('não achei a partitura dentro do .mxl');
+  return xml;
+}
+
+/* ===== Ouvir a partitura (toda ou um trecho) ===== */
+const LST = { state: 'idle', quietUntil: 0 };
+const BPM_OPTS = [40, 50, 60, 70, 80, 90, 100, 110, 120, 140, 160];
+function measNums() { return osmd.Sheet.SourceMeasures.map(m => m.MeasureNumber); }
+function scoreBpm() {
+  try { const sh = osmd.Sheet; if (sh.HasBPMInfo && sh.DefaultStartTempoInBpm) return Math.round(sh.DefaultStartTempoInBpm); } catch (e) {}
+  return 0;
+}
+function initListen(fresh) {
+  const nums = measNums();
+  $('lFrom').min = $('lTo').min = nums[0]; $('lFrom').max = $('lTo').max = nums[nums.length - 1];
+  if (fresh || $('lFrom').value === '' || +$('lTo').value > nums[nums.length - 1]) { $('lFrom').value = nums[0]; $('lTo').value = nums[nums.length - 1]; }
+  if (fresh || !$('lBpm').options.length) {
+    const sb = scoreBpm(), sel = $('lBpm');
+    sel.innerHTML = '';
+    const list = BPM_OPTS.slice(); if (sb && !list.includes(sb)) list.push(sb); list.sort((a, b) => a - b);
+    list.forEach(b => { const o = document.createElement('option'); o.value = b; o.textContent = b + ' BPM' + (b === sb ? ' (da partitura)' : ''); sel.appendChild(o); });
+    sel.value = String(sb || 80);
+  }
+  drawSel();
+}
+function selRange() {   // índices dos compassos escolhidos
+  const nums = measNums();
+  let a = nums.indexOf(+$('lFrom').value), b = nums.indexOf(+$('lTo').value);
+  if (a < 0) a = 0; if (b < 0) b = nums.length - 1;
+  return a <= b ? [a, b] : [b, a];
+}
+const isFullRange = () => { const [a, b] = selRange(); return a === 0 && b === osmd.Sheet.SourceMeasures.length - 1; };
+
+// caixas dos compassos (em px, no mesmo sistema de coordenadas do cursor)
+function measureBoxes() {
+  const U = 10 * osmd.zoom, out = [];
+  osmd.GraphicSheet.MeasureList.forEach((row, i) => {
+    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+    (row || []).forEach(gm => {
+      if (!gm || !gm.PositionAndShape) return;
+      const ps = gm.PositionAndShape, ax = ps.AbsolutePosition.x, ay = ps.AbsolutePosition.y;
+      x0 = Math.min(x0, ax); x1 = Math.max(x1, ax + ps.Size.width); y0 = Math.min(y0, ay); y1 = Math.max(y1, ay + 4);
+    });
+    out[i] = x1 > x0 ? { x: x0 * U, y: (y0 - 1.5) * U, w: (x1 - x0) * U, h: (y1 - y0 + 3) * U } : null;
+  });
+  return out;
+}
+function selLayer() { return (osmd.cursor.cursorElement && osmd.cursor.cursorElement.parentNode) || $('score'); }
+function drawSel() {
+  document.querySelectorAll('.msel').forEach(e => e.remove());
+  if (!loaded || mode !== 'upload' || isFullRange()) return;
+  const [a, b] = selRange(), bx = measureBoxes(), par = selLayer();
+  for (let i = a; i <= b; i++) {
+    if (!bx[i]) continue;
+    const d = document.createElement('div'); d.className = 'msel';
+    d.style.cssText = `left:${bx[i].x}px;top:${bx[i].y}px;width:${bx[i].w}px;height:${bx[i].h}px`;
+    par.appendChild(d);
+  }
+}
+$('score').addEventListener('click', e => {
+  if (mode !== 'upload' || !loaded) return;
+  const r = selLayer().getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+  const i = measureBoxes().findIndex(b => b && x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h);
+  if (i < 0) return;
+  const num = measNums()[i];
+  if (e.shiftKey) $('lTo').value = num;
+  else { $('lFrom').value = num; if (+$('lTo').value < num) $('lTo').value = measNums().slice(-1)[0]; }
+  drawSel();
+});
+['lFrom', 'lTo'].forEach(id => $(id).addEventListener('change', drawSel));
+$('lAll').addEventListener('click', () => { const n = measNums(); $('lFrom').value = n[0]; $('lTo').value = n[n.length - 1]; drawSel(); });
+
+// percorre a partitura com o cursor e anota cada posição: tempo (em semínimas), compasso e notas
+function buildPositions() {
+  const c = osmd.cursor, out = [];
+  c.reset();
+  while (!c.Iterator.EndReached) {
+    const notes = [];
+    for (const n of c.NotesUnderCursor()) {
+      if ((n.isRest && n.isRest()) || n.halfTone === undefined) continue;
+      if (n.NoteTie && n.NoteTie.StartNote !== n) continue;   // continuação de ligadura: já soa na primeira
+      let len = n.Length.RealValue;
+      if (n.NoteTie && n.NoteTie.Notes) len = n.NoteTie.Notes.reduce((a, x) => a + x.Length.RealValue, 0);
+      const st = n.ParentStaffEntry.ParentStaff, id = (st.idInMusicSheet !== undefined) ? st.idInMusicSheet : st.Id;
+      notes.push({ midi: n.halfTone + 12, dur: len * 4, staff: id, short: n.Length.RealValue * 4 });
+    }
+    out.push({ ts: c.Iterator.currentTimeStamp.RealValue * 4, mi: c.Iterator.CurrentMeasureIndex, notes });
+    c.next();
+  }
+  c.reset();
+  return out;
+}
+function playNoteAt(p, t, dur) {
+  if (piano) return piano.play(p, t, { gain: 0.95, duration: dur });
+  const n = synthNote(p, 0.65, t); n.stop(t + dur); return n;
+}
+function listenStart() {
+  if (!loaded) return;
+  ensureAudio();
+  const pos = buildPositions(), [ma, mb] = selRange();
+  const k0 = pos.findIndex(x => x.mi >= ma), k1 = pos.length - 1 - [...pos].reverse().findIndex(x => x.mi <= mb);
+  if (k0 < 0 || k1 < k0) return;
+  const spb = 60 / +$('lBpm').value, onlyHand = $('lHand').checked;
+  const endBeat = (() => { const m = osmd.Sheet.SourceMeasures[mb]; return (m.AbsoluteTimestamp.RealValue + m.Duration.RealValue) * 4; })();
+  // horário de cada posição (segue a ordem do cursor; se voltar no tempo, como num ritornelo, só soma a figura mais curta)
+  const t0 = actx.currentTime + 0.35, times = [];
+  let t = t0;
+  for (let k = k0; k <= k1; k++) {
+    times[k] = t;
+    const cur = pos[k], nx = pos[k + 1];
+    let d = nx && k < k1 ? nx.ts - cur.ts : endBeat - cur.ts;
+    if (!(d > 0)) d = cur.notes.length ? Math.min(...cur.notes.map(n => n.short)) : 1;
+    t += d * spb;
+  }
+  const ev = [];
+  for (let k = k0; k <= k1; k++) pos[k].notes.forEach(n => {
+    if (onlyHand && staffCount > 1 && !handAllows(n.staff)) return;
+    ev.push({ t: times[k], midi: n.midi, dur: Math.max(0.08, Math.min(n.dur, endBeat - pos[k].ts) * spb * 0.96) });
+  });
+  ev.sort((a, b) => a.t - b.t);
+  Object.assign(LST, { state: 'play', pos, times, k: k0, k1, ev, ei: 0, nodes: [], endT: t });
+  const c = osmd.cursor; c.show(); c.reset(); for (let k = 0; k < k0; k++) c.next();
+  hit = new Set(); expected = new Set();
+  $('lPlay').textContent = '■ Parar';
+  setFeedback('🎧', '');
+  $('msg').textContent = 'Ouvindo' + (isFullRange() ? ' a partitura toda' : ' os compassos ' + $('lFrom').value + ' a ' + $('lTo').value) + '…';
+  clearInterval(LST.timer);
+  LST.timer = setInterval(listenSchedule, 25);
+  listenSchedule();
+  requestAnimationFrame(listenTick);
+}
+function listenSchedule() {
+  if (LST.state !== 'play') return;
+  const lim = actx.currentTime + 0.3;
+  while (LST.ei < LST.ev.length && LST.ev[LST.ei].t < lim) {
+    const e = LST.ev[LST.ei++];
+    try { LST.nodes.push(playNoteAt(e.midi, e.t, e.dur)); } catch (err) {}
+  }
+  if (LST.nodes.length > 200) LST.nodes.splice(0, LST.nodes.length - 200);
+}
+function listenTick() {
+  if (LST.state !== 'play') return;
+  const now = actx.currentTime;
+  while (LST.k < LST.k1 && LST.times[LST.k + 1] <= now) { osmd.cursor.next(); LST.k++; }
+  if (now > LST.endT + 0.15) { listenStop(false, true); return; }
+  requestAnimationFrame(listenTick);
+}
+function listenStop(silent, done) {
+  if (LST.state !== 'play') return;
+  LST.state = 'idle';
+  clearInterval(LST.timer);
+  if (!done) LST.nodes.forEach(n => { try { n.stop(actx.currentTime + 0.05); } catch (e) {} });
+  LST.nodes = [];
+  LST.quietUntil = performance.now() + 700;   // o microfone não confunde o fim do som com um toque
+  $('lPlay').textContent = '▶ Ouvir';
+  if (!silent) {
+    restart();
+    $('msg').textContent = (done ? 'Pronto! ' : 'Parado. ') + 'Agora é a sua vez: ' + $('msg').textContent;
+  }
+}
+$('lPlay').addEventListener('click', () => { if (LST.state === 'play') listenStop(false); else listenStart(); });
+$('keySel').addEventListener('change', () => loadSrc(false));
+$('octSel').addEventListener('change', () => loadSrc(false));
 
 /* ===== Prática rápida: gera uma partitura aleatória ===== */
 function genQuickXml() {
@@ -1794,7 +2099,7 @@ ${body}</part></score-partwise>`;
 
 function newQuickRound() { loadScore(genQuickXml()); }
 
-$('goUpload').addEventListener('click', () => { showScreen('upload'); openUpload(uploadXml || EXAMPLE_XML); });
+$('goUpload').addEventListener('click', () => { showScreen('upload'); if (SRC) loadSrc(false); else setSrc({ kind: 'file', xml: EXAMPLE_XML }); });
 $('goQuick').addEventListener('click', () => { showScreen('quick'); newQuickRound(); });
 // Corrida de Notas: uma tela só; ao abrir, a pessoa escolhe o modo (ranqueado ou treino livre)
 function setGameMode(m) {
@@ -1816,28 +2121,23 @@ $('qTiming').addEventListener('change', () => {
 $('qHand').addEventListener('change', newQuickRound);
 $('qRange').addEventListener('change', newQuickRound);
 
-$('example').addEventListener('click', () => openUpload(EXAMPLE_XML));
-function loadHymn() {
-  const k = $('hymnSel').value;
-  fillKeys($('hymnKey'), k);
-  $('hymnKeyWrap').style.display = k ? '' : 'none';
-  if (k) openUpload(hymnXml(k, $('hymnKey').value));
-}
-$('hymnSel').addEventListener('change', loadHymn);
-$('hymnKey').addEventListener('change', loadHymn);
+$('example').addEventListener('click', () => setSrc({ kind: 'file', xml: EXAMPLE_XML }));
+$('hymnSel').addEventListener('change', () => { const k = $('hymnSel').value; if (k) setSrc({ kind: 'hymn', hymn: k }); });
 $('file').addEventListener('change', async e => {
   const f = e.target.files[0];
   if (!f) return;
   const u = new Uint8Array(await f.arrayBuffer());
-  let content;
-  if (u[0] === 0x50 && u[1] === 0x4B) {            // "PK" = arquivo zip (.mxl)
-    content = '';
-    for (let i = 0; i < u.length; i += 0x8000) content += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
-  } else {
-    content = new TextDecoder('utf-8').decode(u);   // .xml / .musicxml
-  }
   e.target.value = '';
-  openUpload(content);
+  if (u[0] === 0x50 && u[1] === 0x4B) {            // "PK" = arquivo zip (.mxl): abre aqui para poder mudar o tom
+    try { setSrc({ kind: 'file', xml: await unzipMxl(u) }); return; }
+    catch (err) {                                   // plano B: entrega o zip direto para o desenho (sem mudar tom)
+      let content = '';
+      for (let i = 0; i < u.length; i += 0x8000) content += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
+      setSrc({ kind: 'raw', xml: content });
+      return;
+    }
+  }
+  setSrc({ kind: 'file', xml: new TextDecoder('utf-8').decode(u) });   // .xml / .musicxml
 });
 $('testSound').addEventListener('click', () => {
   ensureAudio();
