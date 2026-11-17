@@ -144,11 +144,11 @@
   <label class="only-upload">Partitura (.mxl / .xml)
     <input type="file" id="file" accept=".mxl,.xml,.musicxml">
   </label>
-  <label>Volume
+  <label><span class="in-midi">Volume</span><span class="in-mic">Volume do metrônomo</span>
     <input type="range" id="vol" min="0" max="100" value="80">
   </label>
-  <span id="soundState">som: carregando…</span>
-  <button id="testSound">🔊 Testar som</button>
+  <span class="in-midi"><span id="soundState">som: carregando…</span></span>
+  <button id="testSound" class="in-midi">🔊 Testar som</button>
   <button id="example" class="only-upload">Carregar exemplo</button>
   <label class="only-quick">Mão
     <select id="qHand"><option value="right">Direita (clave de sol)</option><option value="left">Esquerda (clave de fá)</option></select>
