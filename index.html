@@ -92,6 +92,8 @@
   .nb.mini{min-width:0;background:#f0f0f0}
   #gOpts small{color:#777}
   #gOpts.song .noSong{display:none!important}
+  #gOpts.ivoff .oIvBox{display:none}
+  .oIvBox{display:inline-flex;flex-wrap:wrap;gap:4px 10px}
   #gOpts:not(.song) #oKeyWrap{display:none!important}
   @keyframes heartUp{0%{transform:translate(-50%,-50%) scale(.6);opacity:0}15%{transform:translate(-50%,-50%) scale(1.3);opacity:1}100%{transform:translate(-50%,-190px) scale(1);opacity:0}}
   .heartUp{position:absolute;font-size:30px;pointer-events:none;animation:heartUp 1.2s ease-out forwards;z-index:6}
@@ -226,6 +228,9 @@
     <div class="row"><b>Música</b><select id="oSong"><option value="">Aleatório (usa as notas e figuras abaixo)</option><option value="doxologia">Doxologia (fácil)</option><option value="santo">Santo, Santo, Santo (médio)</option><option value="castelo">Castelo Forte (mais difícil)</option></select><label id="oKeyWrap">Tom <select id="oKey"></select></label><small id="oSongInfo"></small></div>
     <div class="row noSong"><b>Clave</b><select id="oClef"><option value="G">Sol (mão direita)</option><option value="F">Fá (mão esquerda)</option></select></div>
     <div class="row noSong"><b>Notas</b><span id="oNotes"></span><button class="nb mini" id="oAll">todas</button><button class="nb mini" id="oNone">limpar</button></div>
+    <div class="row noSong"><b>Intervalos</b><select id="oIvMode"><option value="off">desligado (uma nota por vez)</option><option value="mix">misturados com notas soltas</option><option value="only">só intervalos</option></select>
+      <span class="oIvBox"><label><input type="checkbox" class="oIv" value="1"> 2ª</label> <label><input type="checkbox" class="oIv" value="2"> 3ª</label> <label><input type="checkbox" class="oIv" value="3"> 4ª</label> <label><input type="checkbox" class="oIv" value="4"> 5ª</label> <label><input type="checkbox" class="oIv" value="5"> 6ª</label> <label><input type="checkbox" class="oIv" value="6"> 7ª</label> <label><input type="checkbox" class="oIv" value="7"> 8ª</label></span>
+      <small>duas notas tocadas juntas</small></div>
     <div class="row noSong"><b>Figuras</b>
       <label><input type="checkbox" class="oFig" value="4"> semibreve</label>
       <label><input type="checkbox" class="oFig" value="2"> mínima</label>
@@ -1271,14 +1276,27 @@ function genMeasure() {
         const cur = a in alters ? alters[a] : kAlt;
         if (alter !== cur) { show = true; alters[a] = alter; }
       }
-      else if (a in alters) alter = alters[a];   // acidente vale até o fim do compasso
-      else if (cfg.acc && Math.random() < cfg.acc) {
-        const st = a % 7, opts = [];
-        if (st !== 2 && st !== 6) opts.push(1);    // sem Mi# e Si#
-        if (st !== 0 && st !== 3) opts.push(-1);   // sem Dób e Fáb
-        if (opts.length) { alter = opts[Math.floor(Math.random() * opts.length)]; alters[a] = alter; show = true; }
+      else {
+        // treino com intervalos: troca a nota por um par (nota de baixo + intervalo), de preferência com as duas notas marcadas
+        if (train && tc.ivMode !== 'off' && tc.ivs.length && (tc.ivMode === 'only' || Math.random() < 0.45)) {
+          const N = tc.notes, pairs = [];
+          N.forEach(n => tc.ivs.forEach(iv => { if (N.includes(n + iv)) pairs.push([n, iv]); }));
+          const near = pairs.filter(pr => Math.abs(pr[0] - a) <= 2);
+          const pick = (near.length ? near : pairs)[Math.floor(Math.random() * (near.length ? near.length : pairs.length))]
+            || [a, tc.ivs[Math.floor(Math.random() * tc.ivs.length)]];
+          a = pick[0]; ev.upAbs = a + pick[1];
+          if (N.includes(a)) G.lastIdx = N.indexOf(a);
+        }
+        [alter, show] = accFor(a, alters, cfg);
       }
       Object.assign(ev, { abs: a, alter, showAcc: show, midi: STEP_SEMI[a % 7] + 12 * (Math.floor(a / 7) + 1) + alter });
+      if (ev.upAbs != null) {
+        const ua = ev.upAbs, [ual, ush] = accFor(ua, alters, cfg), um = STEP_SEMI[ua % 7] + 12 * (Math.floor(ua / 7) + 1) + ual;
+        if (um > ev.midi) {
+          ev.heads = [{ abs: a, alter, showAcc: show }, { abs: ua, alter: ual, showAcc: ush }];
+          ev.chord = [ev.midi, um]; ev.got = new Set();
+        }
+      }
       if (G.holdOn && d >= 1.5) {   // só notas longas (1 tempo e meio ou mais): segurar até perto do fim (folga: 25% da duração, mín. 0,15 s)
         ev.needHold = true;
         ev.relOk = ev.endTime - Math.max(0.15, 0.25 * (ev.endTime - ev.time));
@@ -1296,6 +1314,18 @@ function genMeasure() {
     beat += d;
   });
   G.lastDur = durs[durs.length - 1];
+}
+
+// alteração de uma nota aleatória: acidente vale até o fim do compasso; às vezes cria sustenido/bemol
+function accFor(a, alters, cfg) {
+  if (a in alters) return [alters[a], false];
+  if (cfg.acc && Math.random() < cfg.acc) {
+    const st = a % 7, opts = [];
+    if (st !== 2 && st !== 6) opts.push(1);    // sem Mi# e Si#
+    if (st !== 0 && st !== 3) opts.push(-1);   // sem Dób e Fáb
+    if (opts.length) { const al = opts[Math.floor(Math.random() * opts.length)]; alters[a] = al; return [al, true]; }
+  }
+  return [0, false];
 }
 
 // treino: ritmo livre só com as figuras escolhidas (figuras curtas não cruzam o tempo; longas começam alinhadas)
@@ -1332,28 +1362,50 @@ function drawEvent(ev) {
     const w = GL.restW[ev.dur] * GSP;
     sGlyph(g, GL.rest[ev.dur], x - w / 2, yOf(ev.dur === 4 ? GB + 6 : GB + 4));   // semibreve pendurada na 4ª linha
   } else {
-    const s = ev.abs - GB, y = yOf(ev.abs), dotted = ev.dur === 3 || ev.dur === 1.5;
-    if (ev.needHold) {          // barrinha de duração (efeito "guitar hero")
+    const H = ev.heads || [{ abs: ev.abs, alter: ev.alter, showAcc: ev.showAcc }];   // 1 nota ou intervalo (2 notas)
+    const lo = H[0].abs, hiA = H[H.length - 1].abs, sLo = lo - GB, sHi = hiA - GB;
+    const dotted = ev.dur === 3 || ev.dur === 1.5;
+    if (ev.needHold) {          // barrinha de duração (efeito "guitar hero"), uma por nota
       const w = Math.max(8, ev.dur * GPPB - 10);
-      sEl('rect', { x, y: y - 4, width: w, height: 8, rx: 4, fill: 'rgba(43,108,176,.13)', stroke: 'rgba(43,108,176,.35)', 'stroke-width': 1 }, g);
-      ev.bar = sEl('rect', { x, y: y - 4, width: 0, height: 8, rx: 4, fill: '#3b82f6' }, g);
+      ev.bars = H.map(h => {
+        const y = yOf(h.abs);
+        sEl('rect', { x, y: y - 4, width: w, height: 8, rx: 4, fill: 'rgba(43,108,176,.13)', stroke: 'rgba(43,108,176,.35)', 'stroke-width': 1 }, g);
+        return sEl('rect', { x, y: y - 4, width: 0, height: 8, rx: 4, fill: '#3b82f6' }, g);
+      });
       ev.barW = w;
     }
     const hw = (ev.dur === 4 ? 1.69 : 1.18) * GSP, x0 = x - hw / 2;
-    for (let k = -2; k >= s; k -= 2) sLine(g, x0 - 5, yOf(GB + k), x0 + hw + 5, yOf(GB + k), 1.4);   // linhas suplementares
-    for (let k = 10; k <= s; k += 2) sLine(g, x0 - 5, yOf(GB + k), x0 + hw + 5, yOf(GB + k), 1.4);
-    sGlyph(g, ev.dur === 4 ? '' : (ev.dur === 2 || ev.dur === 3) ? '' : '', x0, y);
-    if (dotted) sEl('circle', { cx: x0 + hw + 5, cy: (s % 2 === 0) ? y - GSP / 2 : y, r: 2.4, fill: 'currentColor' }, g);   // ponto de aumento
-    if (ev.showAcc) sGlyph(g, ev.alter > 0 ? '' : ev.alter < 0 ? '' : '', x0 - (ev.alter > 0 ? 1.3 : ev.alter < 0 ? 1.2 : 1.05) * GSP, y);
+    const up = (sLo + sHi) / 2 < 4, second = H.length > 1 && hiA - lo === 1;
+    // na 2ª as cabeças ficam lado a lado: a de baixo à esquerda, a de cima à direita
+    const hx = H.map((h, i) => !second || ev.dur === 4 ? x0 : up ? (i ? x0 + hw - 1.3 : x0) : (i ? x0 : x0 - hw + 1.3));
+    if (second && ev.dur === 4) hx[1] = x0 + hw;
+    const xl = Math.min(...hx), xr = Math.max(...hx) + hw;
+    for (let k = -2; k >= sLo; k -= 2) sLine(g, xl - 5, yOf(GB + k), xr + 5, yOf(GB + k), 1.4);   // linhas suplementares
+    for (let k = 10; k <= sHi; k += 2) sLine(g, xl - 5, yOf(GB + k), xr + 5, yOf(GB + k), 1.4);
+    const head = ev.dur === 4 ? '' : (ev.dur === 2 || ev.dur === 3) ? '' : '';
+    H.forEach((h, i) => {
+      const y = yOf(h.abs), sh = h.abs - GB;
+      sGlyph(g, head, hx[i], y);
+      if (dotted) sEl('circle', { cx: xr + 5, cy: (sh % 2 === 0) ? y - GSP / 2 : y, r: 2.4, fill: 'currentColor' }, g);   // ponto de aumento
+    });
+    // acidentes: o de cima mais perto da nota; se os dois estão perto, o de baixo vai mais para a esquerda
+    let accX = xl;
+    [...H].reverse().forEach((h, i, arr) => {
+      if (!h.showAcc) return;
+      const w = (h.alter > 0 ? 1.3 : h.alter < 0 ? 1.2 : 1.05) * GSP;
+      const ax = (i && arr[0].showAcc && arr[0].abs - h.abs <= 5) ? accX - w - 2 : xl - w;
+      sGlyph(g, h.alter > 0 ? '' : h.alter < 0 ? '' : '', ax, yOf(h.abs));
+      accX = ax;
+    });
     if (ev.dur < 4) {
-      const up = s < 4, len = (ev.dur === .125 ? 4.25 : 3.5) * GSP, mid = yOf(GB + 4);
+      const len = (ev.dur === .125 ? 4.25 : 3.5) * GSP, mid = yOf(GB + 4);
       if (up) {
-        const sx = x0 + hw - .65, y2 = Math.min(y - len, mid);
-        sLine(g, sx, y - .17 * GSP, sx, y2, 1.3);
+        const sx = x0 + hw - .65, y2 = Math.min(yOf(hiA) - len, mid);
+        sLine(g, sx, yOf(lo) - .17 * GSP, sx, y2, 1.3);
         if (GL.flagUp[ev.dur]) sGlyph(g, GL.flagUp[ev.dur], sx - .65, y2);
       } else {
-        const sx = x0 + .65, y2 = Math.max(y + len, mid);
-        sLine(g, sx, y + .17 * GSP, sx, y2, 1.3);
+        const sx = x0 + .65, y2 = Math.max(yOf(lo) + len, mid);
+        sLine(g, sx, yOf(hiA) + .17 * GSP, sx, y2, 1.3);
         if (GL.flagDown[ev.dur]) sGlyph(g, GL.flagDown[ev.dur], sx - .65, y2);
       }
     }
@@ -1396,6 +1448,7 @@ function startGame() {
   stopGame(true);
   const lvl = 1, train = isTrain(), tc = train ? readTrain() : null;
   if (train && !tc.song && (!tc.notes.length || !tc.figs.length)) { $('msg').textContent = 'Marque pelo menos uma nota e uma figura no ' + TXT.modeTrain + '.'; return; }
+  if (train && !tc.song && tc.ivMode !== 'off' && !tc.ivs.length) { $('msg').textContent = 'Marque pelo menos um intervalo (2ª a 8ª) ou desligue os intervalos.'; return; }
   G = { state: 'count', kind: train ? 'train' : 'rank', tc, song: train && tc.song ? hymnGame(tc.song, tc.key) : null, clef: train && !tc.song ? tc.clef : 'G', lastIdx: null, lives: train ? Infinity : 3, score: 0, streak: 0, hits: 0, errs: 0, level: lvl, levelHits: 0, genLevel: null, shownLevel: lvl,
     events: [], deco: [], marks: [], held: new Map(), holdOn: train ? $('gHold').checked : !micOn(), nextMeasure: 0, ramp: 0, lastAbs: null, lastWasRest: false, lastDur: 1, graceUntil: 0 };
   buildGameSvg();
@@ -1487,11 +1540,11 @@ function gTick() {
     if (!ev.faded && ev.state !== 'pending' && !ev.holding && now > (ev.rest ? ev.endTime : ev.time + 0.08)) { ev.faded = true; ev.el.classList.add('past'); }
     if (ev.state !== 'pending') continue;
     if (ev.rest) { if (now > ev.endTime) { ev.state = 'ok'; paintEv(ev, '#1f9d3a'); } }
-    else if (now > ev.time + ev.halfSec) { gMiss(ev, 'Deixou passar a nota.', null); if (G.state === 'over') return; }
+    else if (now > ev.time + ev.halfSec) { gMiss(ev, ev.got && ev.got.size ? 'Faltou a outra nota do intervalo.' : 'Deixou passar a nota.', null); if (G.state === 'over') return; }
   }
   G.held.forEach((ev, p) => {
     const prog = Math.min(ev.dur, Math.max(0, b - ev.beat));
-    ev.bar.setAttribute('width', Math.min(ev.barW, prog * GPPB));
+    ev.bars.forEach(b => b.setAttribute('width', Math.min(ev.barW, prog * GPPB)));
     if (now >= ev.endTime) holdDone(ev, p);
   });
   const leftBeat = b - (GHITX - GCLIPX) / GPPB - 1;
@@ -1515,6 +1568,14 @@ function gameNote(p, ts) {
   }
   if (best) {
     if (best.state !== 'pending') return;          // já resolvida: ignora repetição
+    if (best.chord) {                              // intervalo: precisa das duas notas (no microfone, uma basta)
+      if (!best.chord.includes(p)) { gMiss(best, 'Nota errada no intervalo.', p); return; }
+      if (best.got.has(p)) return;
+      best.got.add(p);
+      if (best.got.size === best.chord.length || micOn()) gHit(best, p);
+      else setFeedback(noteName(p) + ' +…', '');
+      return;
+    }
     if (best.midi === p) gHit(best, p); else gMiss(best, 'Nota errada.', p);
     return;
   }
@@ -1528,19 +1589,21 @@ function gameNote(p, ts) {
 
 function gHit(ev, p) {
   ev.state = 'hit'; paintEv(ev, '#1f9d3a');
-  if (ev.needHold) { ev.holding = true; G.held.set(p, ev); }
+  if (ev.needHold) { ev.holding = true; (ev.chord && !micOn() ? [...ev.got] : [p]).forEach(q => G.held.set(q, ev)); }
   G.hits++; G.streak++;
   if (G.kind === 'rank') G.levelHits++;
   G.score += 10 * G.level + Math.min(G.streak, 50);
-  setFeedback(noteName(p), 'ok');
+  setFeedback(ev.chord ? ev.chord.map(noteName).join(' + ') : noteName(p), 'ok');
   if (G.kind === 'rank' && G.streak % EXTRA_LIFE_STREAK === 0 && G.lives !== Infinity && G.lives < MAX_LIVES) { G.lives++; heartFrom(ev); lifeSound(); }
   if (G.levelHits >= HITS_PER_LEVEL) { G.level++; G.levelHits = 0; }
   gHud();
 }
 
+function unhold(ev) { G.held.forEach((e, k) => { if (e === ev) G.held.delete(k); }); }
 function holdDone(ev, p) {
-  ev.holding = false; G.held.delete(p);
-  ev.bar.setAttribute('width', ev.barW); ev.bar.setAttribute('fill', '#1f9d3a');
+  if (!ev.holding) return;
+  ev.holding = false; unhold(ev);
+  ev.bars.forEach(b => { b.setAttribute('width', ev.barW); b.setAttribute('fill', '#1f9d3a'); });
   G.score += 5 * G.level; gHud();
 }
 
@@ -1551,8 +1614,8 @@ function gameNoteOff(p, ts) {
   if (!(lat >= 0 && lat < 0.6)) lat = 0;
   const t = actx.currentTime - lat;
   if (t >= ev.relOk) { holdDone(ev, p); return; }
-  ev.holding = false; G.held.delete(p);
-  ev.state = 'miss'; paintEv(ev, '#d93025'); ev.bar.setAttribute('fill', '#d93025');
+  ev.holding = false; unhold(ev);
+  ev.state = 'miss'; paintEv(ev, '#d93025'); ev.bars.forEach(b => b.setAttribute('fill', '#d93025'));
   gLoseLife('Soltou antes da hora.', p);
 }
 
@@ -1700,6 +1763,7 @@ function readTrain() {
     clef: $('oClef').value,
     notes: TRAIN_SEL[$('oClef').value].slice().sort((x, y) => x - y),
     figs: [...document.querySelectorAll('.oFig:checked')].map(c => +c.value),
+    ivMode: $('oIvMode').value, ivs: [...document.querySelectorAll('.oIv:checked')].map(c => +c.value),
     rests: $('oRests').checked, acc: $('oAcc').checked, accel: $('oAccel').checked,
     bpm: +$('oBpm').value,
     song: $('oSong').value, key: $('oSong').value ? $('oKey').value : '',
@@ -1711,6 +1775,9 @@ function applyTrain(t) {
   if (t.notesF) TRAIN_SEL.F = t.notesF.slice(); else if (t.notes && $('oClef').value === 'F') TRAIN_SEL.F = t.notes.slice();
   renderNotes();
   document.querySelectorAll('.oFig').forEach(c => c.checked = t.figs.includes(+c.value));
+  $('oIvMode').value = ['mix', 'only'].includes(t.ivMode) ? t.ivMode : 'off';
+  const ivs = t.ivs || [2, 4, 7];   // padrão: 3ª, 5ª e 8ª
+  document.querySelectorAll('.oIv').forEach(c => c.checked = ivs.includes(+c.value));
   $('oRests').checked = !!t.rests; $('oAcc').checked = !!t.acc; $('oAccel').checked = !!t.accel;
   if (t.bpm) $('oBpm').value = String(t.bpm);
   $('oSong').value = t.song && HYMN_GAME[t.song] ? t.song : ''; songUi();
@@ -1720,6 +1787,7 @@ function songUi() {
   const s = $('oSong').value;
   fillKeys($('oKey'), s);
   $('gOpts').classList.toggle('song', !!s);
+  $('gOpts').classList.toggle('ivoff', $('oIvMode').value === 'off');
   $('oSongInfo').textContent = s ? 'Só a melodia (mão direita, clave de sol). Velocidade, metrônomo e duração continuam valendo.' : '';
 }
 function saveTrain() {
