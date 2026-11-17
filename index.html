@@ -78,8 +78,6 @@
   #gOver{position:absolute;left:0;right:0;top:44px;height:240px;background:rgba(43,43,58,.88);color:#fff;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center}
   #gOver h3{margin:0;font-size:26px}
   #gOver button{font-size:18px;padding:10px 24px;border-radius:10px;border:none;background:#2b6cb0;color:#fff}
-  @keyframes flashRed{0%{box-shadow:0 0 0 4px rgba(217,48,37,.8)}100%{box-shadow:0 1px 3px rgba(0,0,0,.08)}}
-  #gSvg.hurt{animation:flashRed .5s ease-out}
   #gSvg .past{opacity:.3;transition:opacity .3s}
   body:not(.train) .only-train, body:not(.train) #gOpts{display:none!important}
   body.train .only-rank{display:none!important}
@@ -1547,7 +1545,6 @@ function gLoseLife(reason, p) {
   G.graceUntil = actx.currentTime + 0.25;
   setFeedback(p != null ? noteName(p) : '✗', 'bad');
   $('msg').textContent = reason;
-  const svg = $('gSvg'); svg.classList.remove('hurt'); void svg.getBoundingClientRect(); svg.classList.add('hurt');
   gHud();
   if (G.lives <= 0) gameOver();
 }
