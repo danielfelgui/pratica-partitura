@@ -119,6 +119,37 @@
   body.game.rank #gPick, body.game.train #gPick{display:none}
   body:not(.playing) #gPause{display:none!important}
   body.train .gHelp .only-rank{display:none}
+  /* ===== Método ===== */
+  #mHome{padding:22px 20px 40px;max-width:980px}
+  #mHome h2{margin:14px 0 4px;font-size:22px}
+  #mHome .mIntro{color:#555;margin:0 0 16px;font-size:14px;line-height:1.45}
+  #mFases{display:flex;flex-direction:column;gap:10px;margin-bottom:22px}
+  .fase{background:#fff;border:1px solid #d8d2c4;border-radius:14px;padding:14px 18px;display:flex;flex-direction:column;gap:5px}
+  .fase.on{border-color:#2b6cb0;box-shadow:0 3px 10px rgba(43,108,176,.14)}
+  .fase.soon{opacity:.55;flex-direction:row;flex-wrap:wrap;align-items:baseline;gap:4px 12px;padding:10px 18px}
+  .fase .fn{font-size:12px;color:#2b6cb0;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+  .fase.soon .fn{color:#777}
+  .fase b{font-size:16px}
+  .fase small{color:#666;font-size:13px}
+  .fase em{color:#999;font-size:12px;margin-left:auto}
+  .fase .primary{align-self:flex-start;margin-top:6px;font-size:16px;padding:10px 18px}
+  .fstats{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:14px;color:#444;margin-top:4px}
+  .fdone{margin:4px 0;color:#1f7a34}
+  .mres{background:#eef7ee;border:1px solid #b9dfb9;border-radius:12px;padding:12px 18px;margin-bottom:16px}
+  .mres p{margin:6px 0 0;font-size:14px}
+  #mLog{border-collapse:collapse;font-size:14px;background:#fff;border-radius:10px;overflow:hidden}
+  #mLog th,#mLog td{padding:6px 12px;border-bottom:1px solid #eee;text-align:left}
+  #mLog th{background:#f3f0e8;font-weight:600}
+  #mLog .g{color:#1f7a34;font-weight:600} #mLog .y{color:#a86b00;font-weight:600} #mLog .r{color:#c0392b;font-weight:600}
+  #mLog .empty{color:#777}
+  #mHome details{margin-top:18px;font-size:14px;color:#444;line-height:1.5}
+  #mHome details summary{cursor:pointer;font-weight:600}
+  #mBar{background:#eaf2fb;align-items:center}
+  #mBar #mStep{font-size:15px}
+  #mBar #mTip{flex:1;min-width:240px;font-size:14px;color:#333}
+  #mBar #mClock{font:700 20px ui-monospace,monospace;min-width:70px;text-align:center}
+  body:not(.method) .only-method{display:none!important}
+  body.method .only-quick, body.method #restart, body.method label.timed, body.method button.timed{display:none!important}
 </style>
 </head>
 <body>
@@ -131,8 +162,27 @@
     <button class="card" id="goUpload"><span class="ico">📄</span><b>Subir partitura</b><small>Abra um arquivo .mxl, .xml ou .musicxml e toque no teclado.</small></button>
     <button class="card" id="goQuick"><span class="ico">🎯</span><b>Prática rápida</b><small>Ache as notas no teclado: mão direita ou esquerda, poucas ou muitas notas.</small></button>
     <button class="card" id="goGame"><span class="ico">🏁</span><b data-txt="gameName"></b><small data-txt="gameSub"></small></button>
-    <button class="card" disabled><span class="ico">📘</span><b>Método (apostila)</b><small>Em breve: aula por aula, com exercícios no MIDI.</small></button>
+    <button class="card" id="goMethod"><span class="ico">📘</span><b>Método · 15 min por dia</b><small>Aula do dia em 4 blocos, fase por fase. A velocidade sobe sozinha quando você acerta 90%.</small></button>
   </div>
+</div>
+
+<div id="mHome" class="screen hide">
+  <button id="mBack">← Menu</button>
+  <h2>📘 Método · 15 minutos por dia</h2>
+  <p class="mIntro">Todo dia o mesmo roteiro: <b>achar notas</b> (3 min) → <b>ritmo</b> (3 min) → <b>leitura nova</b> (7 min) → <b>revisão</b> (2 min).<br>
+  A velocidade se ajusta sozinha: 90% ou mais na leitura nova sobe 5 BPM; menos de 70% desce 5. A fase fecha com 3 dias de 90%+ na velocidade-meta.</p>
+  <div id="mResult"></div>
+  <div id="mFases"></div>
+  <h3>Histórico</h3>
+  <table id="mLog"></table>
+  <details><summary>Regras de ouro</summary>
+    <ul>
+      <li><b>Lento e no tempo é melhor que rápido e travando.</b> Se está parando, baixe o BPM.</li>
+      <li><b>Na leitura nova, nunca pare pra corrigir.</b> Siga a linha azul até o fim.</li>
+      <li><b>Material novo todo dia.</b> Repetir a mesma música treina memória, não leitura.</li>
+      <li>Leia por distância (linha → espaço vizinho = 2ª; linha → linha = 3ª), não nota por nota.</li>
+    </ul>
+  </details>
 </div>
 
 <div id="player" class="screen hide">
@@ -188,6 +238,15 @@
   <label class="only-game chk only-train"><input type="checkbox" id="gHold" checked> Contar duração</label>
   <button id="gPlay" class="only-game primary">▶ Jogar</button>
   <button id="gPause" class="only-game only-train">⏸ Pausar</button>
+</div>
+
+<div class="bar only-method" id="mBar">
+  <b id="mStep"></b>
+  <span id="mTip"></span>
+  <span id="mClock">0:00</span>
+  <button id="mGo" class="primary">▶ Começar bloco</button>
+  <button id="mSkip">Pular bloco ⏭</button>
+  <button id="mEnd">Encerrar aula</button>
 </div>
 
 <div class="bar only-upload" id="listenBar">
@@ -776,7 +835,8 @@ function finish() {
   finished = true;
   expected = new Set();
   setFeedback('🎉', 'ok');
-  $('msg').textContent = `Terminou! Acertos: ${hits}, erros: ${errs}.` + (mode === 'quick' ? ' Clique em "Nova rodada".' : '');
+  $('msg').textContent = `Terminou! Acertos: ${hits}, erros: ${errs}.` + (mode === 'quick' && !METH.on ? ' Clique em "Nova rodada".' : '');
+  if (METH.on && mode === 'quick') methRoundDone(hits, hits + errs);
 }
 
 function restart() {
@@ -888,7 +948,7 @@ let tsteps = [], tstate = 'idle', tdirty = false, currentXml = null;
 let tStart = 0, tT0 = 0, tBd = 1, tCount = 4, tTotal = 8, tNextClick = 0, tTimer = null, typSp = 60;
 let playhead = null;
 
-const timingActive = () => mode === 'quick' && $('qTiming').checked;
+const timingActive = () => mode === 'quick' && (METH.on ? METH.timed : $('qTiming').checked);
 
 function expectedMidi(n) {
   if (n.isRest && n.isRest()) return null;
@@ -991,7 +1051,7 @@ async function onStartClick() {
 function startTimed() {
   if (!loaded || !tsteps.length) return;
   ensureAudio();
-  tBd = 60 / parseInt($('qBpm').value, 10);
+  tBd = 60 / (METH.on ? METH.bpm : parseInt($('qBpm').value, 10));
   tCount = beatsPerBar();
   tT0 = actx.currentTime + 0.4;
   tStart = tT0 + tCount * tBd;
@@ -1022,6 +1082,7 @@ function finishTimed() {
   $('qStart').textContent = '▶ Iniciar';
   setFeedback(hits >= tsteps.length ? '🎉' : '✔', 'ok');
   $('msg').textContent = `Terminou! Acertou ${hits} de ${tsteps.length} notas.`;
+  if (METH.on) methRoundDone(hits, tsteps.length);
 }
 
 function movePlayhead(b) {
@@ -1084,6 +1145,7 @@ function onTimedNote(p, ts) {
   }
   if (!best) { setFeedback(noteName(p), 'bad'); return; }   // nota fora de qualquer tempo
   if (best.state !== 'pending') return;
+  if (METH.on && METH.anyKey) { resolveStep(best, true, p); return; }   // bloco de ritmo: qualquer tecla vale
   if (best.exp.has(p)) {
     best.got.add(p);
     if (best.got.size === best.exp.size || micOn()) resolveStep(best, true, p);
@@ -1840,12 +1902,13 @@ function showScreen(m) {
   useFlats = false;
   if (typeof stopGame === 'function') stopGame(true);
   const mic = document.body.classList.contains('mic');
-  document.body.className = (m === 'home') ? '' : m;
+  document.body.className = (m === 'home') ? '' : m;   // 'mhome' = tela do Método
   document.body.classList.toggle('mic', mic);
   if (m === 'quick' && $('qTiming').checked) document.body.classList.add('timing');
   $('home').classList.toggle('hide', m !== 'home');
-  $('player').classList.toggle('hide', m === 'home');
-  if (m === 'home') loaded = false;
+  $('mHome').classList.toggle('hide', m !== 'mhome');
+  $('player').classList.toggle('hide', m === 'home' || m === 'mhome');
+  if (m === 'home' || m === 'mhome') loaded = false;
 }
 
 /* ===== Subir partitura: fonte atual (arquivo, exemplo ou hino) + tom/oitava ===== */
@@ -2178,7 +2241,7 @@ function setGameMode(m) {
 }
 document.querySelectorAll('#gModeSw button, #gPick .card').forEach(b => b.addEventListener('click', () => setGameMode(b.dataset.mode)));
 $('goGame').addEventListener('click', () => { showScreen('game'); stopGame(true); setFeedback('—', ''); $('msg').textContent = 'Escolha um modo para começar.'; });
-$('back').addEventListener('click', () => showScreen('home'));
+$('back').addEventListener('click', () => { if (METH.on) quitLesson(); else showScreen('home'); });
 $('qNew').addEventListener('click', newQuickRound);
 $('qMeasures').addEventListener('change', newQuickRound);
 $('qStart').addEventListener('click', onStartClick);
@@ -2221,6 +2284,240 @@ function checkDiag() { MIC.diag = location.hash === '#diag'; $('micDbg').style.d
 window.addEventListener('hashchange', checkDiag); checkDiag();
 document.querySelectorAll('[data-txt]').forEach(el => el.textContent = TXT[el.dataset.txt]);
 $('oPresetLbl').textContent = 'Copiar um nível do ' + TXT.modeRank + ':';
+/* ===== Método: 15 minutos por dia, fase por fase =====
+   Mesmo roteiro todo dia (BLOCOS). Cada fase define notas, clave, figuras e velocidade.
+   Para criar uma fase nova: preencher o item em FASES (tirar soon:true). Progresso em localStorage 'pp_method'. */
+const BLOCOS = [
+  { k: 'notas',   nome: 'Achar notas', min: 3, timed: false, figs: [1],
+    tip: 'Toque a nota marcada pelo cursor. Tente reconhecer de bate-pronto, sem contar as linhas.' },
+  { k: 'ritmo',   nome: 'Ritmo', min: 3, timed: true, anyKey: true,
+    tip: 'Só o ritmo: toque QUALQUER tecla no começo de cada figura e segure até a próxima. Conte "1, 2, 3, 4" em voz alta.' },
+  { k: 'leitura', nome: 'Leitura nova', min: 7, timed: true,
+    tip: 'Um trecho novo a cada rodada. Errou? Não pare: siga a linha azul até o fim.' },
+  { k: 'revisao', nome: 'Revisão', min: 2, timed: true, review: true,
+    tip: 'O primeiro trecho da sua última aula. Tem que sair mais fácil que da outra vez.' }
+];
+const FASES = [
+  { id: 1, nome: 'Clave de sol · mão direita', desc: 'Dó central até Sol (posição de 5 dedos). Semibreve, mínima e semínima.',
+    clef: 'G', notes: ['C4', 'D4', 'E4', 'F4', 'G4'], figs: [4, 2, 1], bpm0: 50, bpmGoal: 70, okNeed: 3,
+    hint: 'Polegar no Dó central, um dedo por tecla até o Sol. Não precisa olhar para a mão.' },
+  { id: 2, soon: true, nome: 'Clave de fá · mão esquerda', desc: 'Do Dó central até o Fá mais abaixo, com os mesmos valores.' },
+  { id: 3, soon: true, nome: 'Notas âncora e intervalos', desc: 'Todos os Dós, Sol da clave de sol, Fá da clave de fá. Ler por distância. Colcheias e pausas.' },
+  { id: 4, soon: true, nome: 'Mãos juntas (simples)', desc: 'Melodia na direita, notas longas na esquerda. 3/4 e nota pontuada.' },
+  { id: 5, soon: true, nome: 'Armaduras de clave', desc: 'Sol maior (1♯), Fá maior (1♭) e acidentes no meio da música.' },
+  { id: 6, soon: true, nome: 'Hinos', desc: 'Soprano + baixo primeiro; depois as vozes do meio, até as 4 vozes.' }
+];
+const METH = { on: false, fase: null, bi: -1, timed: false, anyKey: false, running: false, tEnd: 0, timeUp: false,
+  res: [], bpm: 50, firstXml: null, reviewXml: null, clock: null, roundT: null };
+
+function methLoad() {
+  let s = null;
+  try { s = JSON.parse(localStorage.getItem('pp_method') || 'null'); } catch (e) {}
+  s = s || {};
+  s.f = s.f || {}; s.log = s.log || [];
+  return s;
+}
+function methSave(s) { try { localStorage.setItem('pp_method', JSON.stringify(s)); } catch (e) {} }
+function faseState(s, F) {
+  const st = s.f[F.id] = s.f[F.id] || {};
+  if (!st.bpm) st.bpm = F.bpm0;
+  return st;
+}
+const todayStr = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+const pct = r => r && r.tot ? Math.round(100 * r.hits / r.tot) : null;
+// dias diferentes com 90%+ na leitura nova, já na velocidade-meta
+function okDays(s, F) {
+  return new Set(s.log.filter(e => e.f === F.id && e.bpm >= F.bpmGoal && (e.acc.leitura || 0) >= 90).map(e => e.d)).size;
+}
+
+/* MusicXML da fase: notas sorteadas (sem repetir a anterior), compassos 4/4 preenchidos com as figuras */
+function genMethXml(F, B, measures) {
+  const STEPS = 'CDEFGAB';
+  const pool = B.anyKey ? [F.clef === 'G' ? 'B4' : 'D3'] : F.notes;
+  const figs = B.figs || F.figs;
+  const W = { 4: 1, 2: 2, 1: 3 };
+  const TYPE = { 4: 'whole', 2: 'half', 1: 'quarter' };
+  const clef = F.clef === 'G' ? '<sign>G</sign><line>2</line>' : '<sign>F</sign><line>4</line>';
+  let prev = null, body = '';
+  for (let m = 0; m < measures; m++) {
+    let rem = 4, notes = '';
+    while (rem > 0) {
+      const ok = figs.filter(f => f <= rem);
+      const tot = ok.reduce((a, f) => a + (W[f] || 1), 0);
+      let r = Math.random() * tot, f = ok[0];
+      for (const x of ok) { r -= (W[x] || 1); if (r < 0) { f = x; break; } }
+      let n;
+      do { n = pool[Math.floor(Math.random() * pool.length)]; } while (n === prev && pool.length > 1);
+      prev = n;
+      notes += `<note><pitch><step>${n[0]}</step><octave>${n.slice(1)}</octave></pitch><duration>${f}</duration><type>${TYPE[f]}</type></note>`;
+      rem -= f;
+    }
+    const attrs = m === 0 ? `<attributes><divisions>1</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef>${clef}</clef></attributes>` : '';
+    body += `<measure number="${m + 1}">${attrs}${notes}</measure>\n`;
+  }
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1"><part-list><score-part id="P1"><part-name></part-name></score-part></part-list>
+<part id="P1">
+${body}</part></score-partwise>`;
+}
+
+/* ----- Tela do Método ----- */
+function renderMethodHome(result) {
+  const s = methLoad();
+  let h = '';
+  FASES.forEach(F => {
+    if (F.soon) {
+      h += `<div class="fase soon"><div class="fn">Fase ${F.id}</div><b>${F.nome}</b><small>${F.desc}</small><em>em breve</em></div>`;
+      return;
+    }
+    const st = faseState(s, F), ok = okDays(s, F), days = new Set(s.log.filter(e => e.f === F.id).map(e => e.d)).size;
+    const done = ok >= F.okNeed;
+    h += `<div class="fase on"><div class="fn">Fase ${F.id}${done ? ' · ✅ concluída' : ''}</div><b>${F.nome}</b><small>${F.desc}</small>
+      <div class="fstats">
+        <span>Velocidade de hoje <button class="nb mini mBpm" data-f="${F.id}" data-d="-5">−</button> <b>${st.bpm}</b> BPM <button class="nb mini mBpm" data-f="${F.id}" data-d="5">+</button></span>
+        <span>Meta <b>${F.bpmGoal}</b> BPM</span>
+        <span>Dias com 90%+ na meta <b>${Math.min(ok, F.okNeed)}/${F.okNeed}</b></span>
+        <span>Aulas feitas <b>${days}</b></span>
+      </div>
+      ${done ? '<p class="fdone">🎉 Você fechou esta fase! Pode seguir treinando nela ou pedir para montar a próxima.</p>' : ''}
+      <button class="primary mStart" data-f="${F.id}">▶ Começar a aula de hoje (15 min)</button></div>`;
+  });
+  $('mFases').innerHTML = h;
+  $('mResult').innerHTML = result || '';
+  const log = s.log.slice(-14).reverse();
+  const c = v => v === null || v === undefined ? '—' : `<span class="${v >= 90 ? 'g' : v >= 70 ? 'y' : 'r'}">${v}%</span>`;
+  $('mLog').innerHTML = log.length
+    ? '<tr><th>Data</th><th>Fase</th><th>BPM</th><th>Notas</th><th>Ritmo</th><th>Leitura</th><th>Revisão</th></tr>' +
+      log.map(e => `<tr><td>${e.d.split('-').reverse().join('/')}</td><td>${e.f}</td><td>${e.bpm}</td><td>${c(e.acc.notas)}</td><td>${c(e.acc.ritmo)}</td><td>${c(e.acc.leitura)}</td><td>${c(e.acc.revisao)}</td></tr>`).join('')
+    : '<tr><td class="empty">Nenhuma aula ainda. A primeira é hoje 🙂</td></tr>';
+  document.querySelectorAll('.mBpm').forEach(b => b.onclick = () => {
+    const s2 = methLoad(), F = FASES.find(x => x.id === +b.dataset.f), st = faseState(s2, F);
+    st.bpm = Math.max(40, Math.min(120, st.bpm + +b.dataset.d));
+    methSave(s2); renderMethodHome($('mResult').innerHTML);
+  });
+  document.querySelectorAll('.mStart').forEach(b => b.onclick = () => startLesson(FASES.find(x => x.id === +b.dataset.f)));
+}
+function openMethodHome(result) { showScreen('mhome'); renderMethodHome(result); }
+
+/* ----- Aula ----- */
+function startLesson(F) {
+  const s = methLoad(), st = faseState(s, F);
+  Object.assign(METH, { on: true, fase: F, bi: -1, res: BLOCOS.map(() => ({ hits: 0, tot: 0 })), bpm: st.bpm,
+    firstXml: null, reviewXml: st.review || null });
+  showScreen('quick');
+  document.body.classList.add('method');
+  startBlock(0);
+}
+function startBlock(i) {
+  methStopRound();
+  METH.bi = i;
+  if (i >= BLOCOS.length) { endLesson(true); return; }
+  const B = BLOCOS[i];
+  Object.assign(METH, { timed: B.timed, anyKey: !!B.anyKey, running: false, timeUp: false });
+  document.body.classList.toggle('timing', B.timed);
+  $('mStep').textContent = `Bloco ${i + 1} de ${BLOCOS.length} · ${B.nome}`;
+  $('mTip').textContent = B.tip + (i === 0 && METH.fase.hint ? ' ' + METH.fase.hint : '');
+  $('mClock').textContent = fmtClock(B.min * 60);
+  $('mGo').classList.remove('hide');
+  $('mGo').textContent = '▶ Começar bloco';
+  $('score').innerHTML = ''; loaded = false; finished = true;
+  $('hits').textContent = 0; $('errs').textContent = 0;
+  setFeedback('—', '');
+  $('msg').textContent = `${B.nome} · ${B.min} min${B.timed ? ' · ' + METH.bpm + ' BPM' : ''}. Clique em "Começar bloco" quando estiver pronto.`;
+}
+const fmtClock = sec => Math.floor(sec / 60) + ':' + String(Math.max(0, Math.floor(sec % 60))).padStart(2, '0');
+function goBlock() {
+  const B = BLOCOS[METH.bi];
+  $('mGo').classList.add('hide');
+  METH.running = true;
+  METH.tEnd = performance.now() + B.min * 60000;
+  clearInterval(METH.clock);
+  METH.clock = setInterval(methClock, 250);
+  methRound();
+}
+function methClock() {
+  if (!METH.on || !METH.running) return;
+  const left = (METH.tEnd - performance.now()) / 1000;
+  $('mClock').textContent = fmtClock(Math.ceil(Math.max(0, left)));
+  if (left <= 0 && !METH.timeUp) {
+    METH.timeUp = true;
+    if (!METH.timed) {   // achar notas: conta o que já fez e segue
+      if (!finished) methAdd(hits, hits + errs);
+      startBlock(METH.bi + 1);
+    } else if (tstate !== 'running') startBlock(METH.bi + 1);
+    else $('mClock').textContent = 'última rodada';
+  }
+}
+async function methRound() {
+  const B = BLOCOS[METH.bi], F = METH.fase;
+  let xml;
+  if (B.review) xml = METH.reviewXml || METH.firstXml || genMethXml(F, BLOCOS[2], 4);
+  else xml = genMethXml(F, B, 4);
+  if (B.k === 'leitura' && !METH.firstXml) METH.firstXml = xml;
+  if (B.review && !METH.reviewXml) METH.reviewXml = xml;
+  await loadScore(xml);
+  if (!METH.on || BLOCOS[METH.bi] !== B) return;
+  if (B.timed) startTimed();
+  $('msg').textContent = B.anyKey ? 'Qualquer tecla vale: o que conta é o tempo.' : $('msg').textContent;
+}
+function methAdd(h, tot) { const r = METH.res[METH.bi]; if (r) { r.hits += h; r.tot += tot; } }
+// chamado quando uma rodada termina (fim da partitura)
+function methRoundDone(h, tot) {
+  if (!METH.on || !METH.running) return;
+  methAdd(h, tot);
+  if (METH.timeUp) { METH.roundT = setTimeout(() => startBlock(METH.bi + 1), 1200); return; }
+  METH.roundT = setTimeout(methRound, 1200);
+}
+function methStopRound() {
+  clearTimeout(METH.roundT);
+  clearInterval(METH.clock);
+  METH.running = false;
+  stopTimed(true);
+  if (playhead) playhead.style.display = 'none';
+}
+function endLesson(complete) {
+  methStopRound();
+  if (!METH.on) return;
+  METH.on = false;
+  const F = METH.fase, acc = {};
+  BLOCOS.forEach((B, i) => acc[B.k] = pct(METH.res[i]));
+  const any = METH.res.some(r => r.tot > 0);
+  let msg = '';
+  if (any) {
+    const s = methLoad(), st = faseState(s, F);
+    s.log.push({ d: todayStr(), f: F.id, bpm: METH.bpm, acc, full: complete });
+    if (s.log.length > 200) s.log = s.log.slice(-200);
+    if (METH.firstXml) st.review = METH.firstXml;
+    const L = acc.leitura;
+    let next = '';
+    if (complete && L !== null) {
+      if (L >= 90 && st.bpm < 120) { st.bpm = Math.min(120, METH.bpm + 5); next = `Mandou bem! Na próxima aula a velocidade sobe para <b>${st.bpm} BPM</b>.`; }
+      else if (L < 70 && st.bpm > 40) { st.bpm = Math.max(40, METH.bpm - 5); next = `Na próxima aula a velocidade desce para <b>${st.bpm} BPM</b>: mais devagar e no tempo rende mais.`; }
+      else next = `Continue em <b>${st.bpm} BPM</b> até passar de 90% na leitura nova.`;
+    } else if (!complete) next = 'Aula interrompida: a velocidade não mudou.';
+    methSave(s);
+    const ok = okDays(s, F);
+    const cell = (B, i) => `<span>${B.nome} <b>${acc[B.k] === null ? '—' : acc[B.k] + '%'}</b></span>`;
+    msg = `<div class="mres"><b>${complete ? '✅ Aula de hoje feita!' : 'Aula salva até onde você foi.'}</b>
+      <div class="fstats">${BLOCOS.map(cell).join('')}</div><p>${next}</p>
+      ${ok >= F.okNeed ? '<p>🎉 <b>Fase ' + F.id + ' concluída!</b> ' + ok + ' dias com 90%+ na velocidade-meta.</p>' : ''}</div>`;
+  }
+  document.body.classList.remove('method');
+  openMethodHome(msg);
+}
+$('goMethod').addEventListener('click', () => openMethodHome());
+$('mBack').addEventListener('click', () => showScreen('home'));
+$('mGo').addEventListener('click', goBlock);
+// rodada pela metade (pulou o bloco ou encerrou): conta só o que já passou
+function methPartial() {
+  if (!METH.running) return;
+  if (METH.timed) { if (tstate === 'running') methAdd(hits, tsteps.filter(s => s.state !== 'pending').length); }
+  else if (!finished) methAdd(hits, hits + errs);
+}
+function quitLesson() { if (METH.on) { methPartial(); endLesson(false); } }
+$('mSkip').addEventListener('click', () => { if (METH.on) { methPartial(); startBlock(METH.bi + 1); } });
+$('mEnd').addEventListener('click', quitLesson);
+
 initAudio();
 initMIDI();
 showScreen('home');
